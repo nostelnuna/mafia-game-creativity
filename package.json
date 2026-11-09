@@ -1,0 +1,13 @@
+{
+  "name": "mafia-master-dual",
+  "version": "2.0.0",
+  "description": "5~35인 대면(빔프로젝터+스마트폰) & 비대면(실시간 채팅) 통합 마피아 플랫폼",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4"
+  }
+}

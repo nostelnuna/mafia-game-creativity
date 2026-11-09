@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>대면 마피아 참가자 모바일 화면</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
+    body { font-family: 'Pretendard', sans-serif; user-select: none; -webkit-touch-callout: none; }
+    .pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col p-4 justify-between max-w-md mx-auto antialiased">
+
+  <!-- [1] 입장 전 로그인 화면 -->
+  <div id="joinScreen" class="my-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col gap-4 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center font-black text-2xl text-white mx-auto shadow-lg shadow-rose-950">
+      M
+    </div>
+    <div>
+      <h2 class="text-2xl font-black text-white">마피아 게임 입장</h2>
+      <p class="text-xs text-slate-400 mt-1">현장에서 불릴 본인의 이름이나 닉네임을 적어주세요.</p>
+    </div>
+
+    <input type="text" id="nameInput" placeholder="닉네임 입력 (예: 철수)" maxlength="10"
+      class="bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3.5 text-center text-white font-bold focus:outline-none focus:border-rose-500 text-base">
+
+    <button id="joinBtn" class="py-4 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-base rounded-2xl shadow-xl shadow-rose-950 transition">
+      게임 방 입장하기 ▶
+    </button>
+  </div>
+
+  <!-- [2] 입장 후 인게임 화면 (기본 숨김) -->
+  <div id="gameScreen" class="hidden flex-1 flex flex-col gap-4">
+    
+    <!-- 플레이어 본인 프로필 헤더 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <span id="myNumberBadge" class="w-8 h-8 rounded-xl bg-rose-600 text-white font-mono font-black text-sm flex items-center justify-center shadow">
+          ?
+        </span>
+        <div>
+          <span id="myNameText" class="font-extrabold text-sm text-white">참가자</span>
+          <span class="text-[10px] text-slate-400 block font-mono">ROOM #MAFIA30</span>
+        </div>
+      </div>
+      <span id="myStatusBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+        생존 중
+      </span>
+    </div>
+
+    <!-- 비밀 직업 확인 카드 (Hold to Reveal) -->
+    <div class="relative bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-5 shadow-xl text-center overflow-hidden">
+      <!-- 가림막 (터치 꾹 누르면 투명해짐) -->
+      <div id="roleCover" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-10 flex flex-col items-center justify-center p-4 transition-opacity duration-200 cursor-pointer">
+        <span class="text-4xl mb-2 animate-bounce">👆</span>
+        <p class="text-sm font-black text-rose-400">화면을 꾹 누르고 있으면 직업 공개</p>
+        <p class="text-[11px] text-slate-500 mt-1">주변 사람에게 보이지 않게 가리고 확인하세요!</p>
+      </div>
+
+      <!-- 직업 정보 -->
+      <div class="py-2">
+        <div id="roleIcon" class="text-5xl mb-2">🧑‍🌾</div>
+        <h3 id="roleName" class="text-2xl font-black text-white">직업 대기 중</h3>
+        <p id="roleTeam" class="text-xs font-bold text-slate-400 mb-2">사회자가 게임을 시작하면 배분됩니다.</p>
+        <p id="roleDesc" class="text-xs text-slate-300 bg-slate-900/80 p-3 rounded-2xl border border-slate-800 leading-relaxed">
+          차분히 대기해 주세요.
+        </p>
+
+        <!-- 마피아 팀원 명단 -->
+        <div id="mafiaTeammatesBox" class="mt-3 p-3 bg-rose-950/40 border border-rose-900/60 rounded-2xl text-left hidden">
+          <span class="text-xs font-black text-rose-300 flex items-center gap-1.5 mb-1">
+            <span>🩸</span> 마피아 동료 명단:
+          </span>
+          <p id="mafiaTeammatesList" class="text-xs text-rose-200 font-mono"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 페이즈별 모바일 인터랙션 패널 -->
+    <div id="actionPanel" class="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col justify-center min-h-[220px]">
+      <div class="text-center py-4 text-slate-400">
+        <span class="text-3xl block mb-2">⏳</span>
+        <p class="text-xs font-bold text-slate-300">메인 빔프로젝터 화면을 확인하세요</p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="text-center text-[11px] text-slate-600 py-2">
+    MAFIA SMART COMPANION (5~35 PLAYERS)
+  </footer>
+
+  <script>
+    const socket = io();
+    let myPlayer = null;
+    let mySecretRole = null;
+    let currentServerState = null;
+
+    // 세션 토큰 복구
+    let storedToken = localStorage.getItem('mafia_player_token');
+    let storedName = localStorage.getItem('mafia_player_name');
+
+    if (storedToken && storedName) {
+      document.getElementById('nameInput').value = storedName;
+      // 자동 재연결 시도
+      socket.emit('offline:player_join', { name: storedName, token: storedToken });
+    }
+
+    // 1. 입장 버튼
+    document.getElementById('joinBtn').onclick = () => {
+      const name = document.getElementById('nameInput').value.trim();
+      if (!name) {
+        alert('닉네임을 입력해 주세요!');
+        return;
+      }
+      localStorage.setItem('mafia_player_name', name);
+      socket.emit('offline:player_join', { name, token: storedToken });
+    };
+
+    socket.on('offline:joined_success', (player) => {
+      myPlayer = player;
+      if (player.token) {
+        localStorage.setItem('mafia_player_token', player.token);
+        storedToken = player.token;
+      }
+      document.getElementById('joinScreen').classList.add('hidden');
+      document.getElementById('gameScreen').classList.remove('hidden');
+      document.getElementById('myNumberBadge').textContent = '👤';
+      document.getElementById('myNameText').textContent = player.name;
+    });
+
+    socket.on('error_message', (msg) => {
+      alert(msg);
+    });
+
+    // 2. 비밀 직업 수신
+    socket.on('offline:secret_role', (roleData) => {
+      mySecretRole = roleData;
+      document.getElementById('roleIcon').textContent = roleData.icon;
+      document.getElementById('roleName').textContent = roleData.roleName;
+      document.getElementById('roleTeam').textContent = roleData.team === 'MAFIA' ? '🩸 마피아 진영' : '🕊️ 시민 진영';
+      document.getElementById('roleTeam').className = `text-xs font-bold mb-2 ${roleData.team === 'MAFIA' ? 'text-rose-400' : 'text-sky-400'}`;
+      document.getElementById('roleDesc').textContent = roleData.desc;
+
+      if (roleData.team === 'MAFIA' && roleData.teammates && roleData.teammates.length > 0) {
+        document.getElementById('mafiaTeammatesBox').classList.remove('hidden');
+        document.getElementById('mafiaTeammatesList').textContent = roleData.teammates.map(t => t.name).join(', ');
+      } else {
+        document.getElementById('mafiaTeammatesBox').classList.add('hidden');
+      }
+    });
+
+    // 다음 게임을 위한 로비 복귀 수신 (접속 유지)
+    socket.on('offline:player_reset', () => {
+      mySecretRole = null;
+      document.getElementById('roleIcon').textContent = '🧑‍🌾';
+      document.getElementById('roleName').textContent = '직업 대기 중';
+      document.getElementById('roleTeam').textContent = '사회자가 새 게임을 시작하면 배분됩니다.';
+      document.getElementById('roleTeam').className = 'text-xs font-bold mb-2 text-slate-400';
+      document.getElementById('roleDesc').textContent = '새 라운드를 위해 대기 중입니다.';
+      document.getElementById('mafiaTeammatesBox').classList.add('hidden');
+      document.getElementById('myStatusBadge').textContent = '생존 중';
+      document.getElementById('myStatusBadge').className = 'text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      
+      const cover = document.getElementById('roleCover');
+      cover.style.opacity = '1';
+      cover.style.pointerEvents = 'auto';
+
+      document.getElementById('actionPanel').innerHTML = `
+        <div class="text-center py-4">
+          <span class="text-3xl block mb-1">⏳</span>
+          <p class="text-xs font-bold text-slate-300">새 게임 시작 대기 중</p>
+          <p class="text-[10px] text-slate-500 mt-1">호스트가 시작하면 새 직업이 배분됩니다.</p>
+        </div>
+      `;
+    });
+
+    // 강제 퇴장 수신
+    socket.on('offline:force_kick', () => {
+      myPlayer = null;
+      mySecretRole = null;
+      localStorage.removeItem('mafia_player_token');
+      localStorage.removeItem('mafia_player_name');
+      document.getElementById('joinScreen').classList.remove('hidden');
+      document.getElementById('gameScreen').classList.add('hidden');
+      alert('방에서 퇴장되었습니다.');
+    });
+
+    // 3. 직업 가림막 터치 홀드 이벤트
+    const cover = document.getElementById('roleCover');
+    const showRole = (e) => { e.preventDefault(); cover.style.opacity = '0'; cover.style.pointerEvents = 'none'; };
+    const hideRole = () => { cover.style.opacity = '1'; cover.style.pointerEvents = 'auto'; };
+
+    cover.addEventListener('mousedown', showRole);
+    window.addEventListener('mouseup', hideRole);
+    cover.addEventListener('touchstart', showRole);
+    window.addEventListener('touchend', hideRole);
+
+    // 4. 서버 상태 업데이트 시 화면 렌더링
+    socket.on('offline:state_update', (state) => {
+      currentServerState = state;
+      if (!myPlayer) return;
+
+      const me = state.players.find(p => p.id === myPlayer.id);
+      const isAlive = me ? me.isAlive : true;
+      const statusBadge = document.getElementById('myStatusBadge');
+      const panel = document.getElementById('actionPanel');
+
+      if (!isAlive) {
+        statusBadge.textContent = '사망 (관전 중)';
+        statusBadge.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
+        panel.innerHTML = `
+          <div class="text-center py-4 text-slate-400">
+            <span class="text-4xl block mb-2">👻</span>
+            <p class="text-sm font-bold text-slate-300">당신은 사망하였습니다</p>
+            <p class="text-xs text-slate-500 mt-1">남은 생존자들의 심리전을 끝까지 관전해 보세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 페이즈별 액션 UI
+      if (state.phase === 'LOBBY' || state.phase === 'FIRST_NIGHT') {
+        panel.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">🤫</span>
+            <p class="text-xs font-bold text-slate-300">직업을 확인하세요</p>
+            <p class="text-[10px] text-slate-500 mt-1">위 카드를 꾹 눌러 직업을 확인하세요.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_DISCUSS') {
+        panel.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">🗣️</span>
+            <p class="text-xs font-bold text-white">낮 자유 토론 진행 중</p>
+            <p class="text-[10px] text-slate-400 mt-1">의심스러운 인물을 살펴보고 토론하세요.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_NOMINATE') {
+        const aliveOthers = state.players.filter(p => p.isAlive && p.id !== myPlayer.id);
+        panel.innerHTML = `
+          <div>
+            <span class="text-xs font-bold text-rose-400 block mb-2">처형 후보 지목 투표</span>
+            <select id="nominateSelect" class="w-full bg-slate-950 text-white rounded-xl p-3 border border-slate-700 text-xs mb-3 focus:outline-none">
+              ${aliveOthers.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+            </select>
+            <button id="submitNominateBtn" class="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow">
+              지목 투표 제출
+            </button>
+          </div>
+        `;
+        document.getElementById('submitNominateBtn').onclick = () => {
+          const targetId = document.getElementById('nominateSelect').value;
+          socket.emit('offline:nominate', { targetId });
+          panel.innerHTML = `<div class="text-center py-4 text-emerald-400 font-bold text-xs">✅ 지목 투표가 제출되었습니다.</div>`;
+        };
+      } else if (state.phase === 'DAY_TRIAL') {
+        panel.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">⚖️</span>
+            <p class="text-xs font-bold text-white">최후 변론 진행 중</p>
+            <p class="text-[10px] text-slate-400 mt-1">변론이 끝나면 찬반 투표 버튼이 나타납니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_VERDICT') {
+        if (state.trialCandidate && state.trialCandidate.id === myPlayer.id) {
+          panel.innerHTML = `
+            <div class="text-center py-4 text-rose-400 font-bold text-xs">
+              🙏 당신은 피고인입니다. 투표 결과를 기다리세요.
+            </div>
+          `;
+        } else {
+          panel.innerHTML = `
+            <div class="flex flex-col gap-2.5">
+              <span class="text-xs font-bold text-center text-white">
+                ${state.trialCandidate?.name} 님에 대한 판결
+              </span>
+              <div class="grid grid-cols-2 gap-3">
+                <button id="voteG" class="py-4 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-2xl shadow">
+                  유죄 (처형 찬성)
+                </button>
+                <button id="voteI" class="py-4 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-2xl shadow">
+                  무죄 (처형 반대)
+                </button>
+              </div>
+            </div>
+          `;
+          document.getElementById('voteG').onclick = () => {
+            socket.emit('offline:verdict', { vote: 'guilty' });
+            panel.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">유죄 투표 제출 완료</div>`;
+          };
+          document.getElementById('voteI').onclick = () => {
+            socket.emit('offline:verdict', { vote: 'innocent' });
+            panel.innerHTML = `<div class="text-center py-4 text-sky-400 font-bold text-xs">무죄 투표 제출 완료</div>`;
+          };
+        }
+      } else if (state.phase === 'NIGHT') {
+        if (!mySecretRole) return;
+
+        if (mySecretRole.team === 'MAFIA') {
+          const nonMafia = state.players.filter(p => p.isAlive);
+          panel.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-black text-rose-400 flex items-center gap-1">
+                <span>🩸</span> 습격 대상 선택 (마피아 전용)
+              </span>
+              <select id="mafiaTargetSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-3 border border-slate-700">
+                ${nonMafia.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="mafiaKillBtn" class="w-full py-3 bg-rose-700 hover:bg-rose-600 text-white font-black text-xs rounded-xl shadow">
+                습격 대상 지정
+              </button>
+            </div>
+          `;
+          document.getElementById('mafiaKillBtn').onclick = () => {
+            const targetId = document.getElementById('mafiaTargetSelect').value;
+            socket.emit('offline:night_action', { action: 'mafia_kill', targetId });
+            panel.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">습격 대상을 지정했습니다.</div>`;
+          };
+        } else if (mySecretRole.role === 'POLICE') {
+          const targets = state.players.filter(p => p.isAlive && p.id !== myPlayer.id);
+          panel.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-black text-sky-400 flex items-center gap-1">
+                <span>🔍</span> 용의자 조사 (경찰 전용)
+              </span>
+              <select id="policeTargetSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-3 border border-slate-700">
+                ${targets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="policeCheckBtn" class="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow">
+                조사 실행
+              </button>
+            </div>
+          `;
+          document.getElementById('policeCheckBtn').onclick = () => {
+            const targetId = document.getElementById('policeTargetSelect').value;
+            socket.emit('offline:night_action', { action: 'police_check', targetId });
+          };
+        } else if (mySecretRole.role === 'DOCTOR') {
+          const targets = state.players.filter(p => p.isAlive);
+          panel.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-black text-emerald-400 flex items-center gap-1">
+                <span>💉</span> 치료 대상 선택 (의사 전용)
+              </span>
+              <select id="doctorTargetSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-3 border border-slate-700">
+                ${targets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="doctorHealBtn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow">
+                치료 지정
+              </button>
+            </div>
+          `;
+          document.getElementById('doctorHealBtn').onclick = () => {
+            const targetId = document.getElementById('doctorTargetSelect').value;
+            socket.emit('offline:night_action', { action: 'doctor_heal', targetId });
+            panel.innerHTML = `<div class="text-center py-4 text-emerald-400 font-bold text-xs">선택한 플레이어를 보호합니다.</div>`;
+          };
+        } else {
+          // 시민 취침
+          panel.innerHTML = `
+            <div class="text-center py-5">
+              <span class="text-4xl block mb-2 pulse-slow">🌙</span>
+              <p class="text-xs font-bold text-slate-300">평온하게 잠을 자고 있습니다...</p>
+              <p class="text-[10px] text-slate-500 mt-1">고개를 들지 마시고 조용히 아침을 기다리세요.</p>
+            </div>
+          `;
+        }
+      }
+    });
+
+    // 경찰 조사 결과 수신
+    socket.on('offline:police_result', (res) => {
+      const panel = document.getElementById('actionPanel');
+      panel.innerHTML = `
+        <div class="p-4 bg-slate-950 border border-slate-700 rounded-2xl text-center">
+          <span class="text-xs text-slate-400 block mb-1">${res.targetName} 조사 결과</span>
+          <span class="text-base font-black ${res.isMafia ? 'text-rose-500' : 'text-emerald-400'}">
+            ${res.isMafia ? '🔴 마피아입니다!' : '🟢 선량한 시민입니다.'}
+          </span>
+        </div>
+      `;
+    });
+  </script>
+</body>
+</html>

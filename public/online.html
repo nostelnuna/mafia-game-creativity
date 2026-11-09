@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>비대면 온라인 마피아 게임 (/online)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
+    body { font-family: 'Pretendard', sans-serif; user-select: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+  <!-- ============================================== -->
+  <!-- [1] 로그인 / 닉네임 입력 화면 -->
+  <!-- ============================================== -->
+  <div id="loginScreen" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-5">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center text-3xl shadow-lg shadow-rose-950">
+        🎭
+      </div>
+      <div>
+        <h1 class="text-2xl font-black text-white">MAFIA ONLINE</h1>
+        <p class="text-xs text-rose-400 font-bold mt-1">5~35인 비대면 실시간 마피아</p>
+        <p class="text-[11px] text-slate-400 mt-1">앱 설치 없이 웹 브라우저에서 바로 즐기세요.</p>
+      </div>
+
+      <div class="w-full">
+        <input type="text" id="nameInput" placeholder="닉네임 입력 (예: 홍길동)" maxlength="12" autofocus
+          class="w-full bg-slate-950 border border-slate-700 rounded-2xl py-3.5 px-4 text-center text-white font-bold text-base focus:outline-none focus:border-rose-500 transition">
+      </div>
+
+      <button id="joinBtn" class="w-full py-4 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-base rounded-2xl shadow-xl shadow-rose-950 transition transform hover:-translate-y-0.5">
+        방 입장하기 ▶
+      </button>
+
+      <span class="text-[10px] text-slate-500">실시간 다채널 채팅 & 비밀번호 방장 시스템</span>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- [2] 인게임 메인 화면 (단일 통합 반응형 UI) -->
+  <!-- ============================================== -->
+  <div id="gameScreen" class="hidden flex-1 flex flex-col h-screen max-w-6xl w-full mx-auto p-2 sm:p-4 gap-2.5">
+    
+    <!-- 상단 네비게이션 & 페이즈 헤더 -->
+    <header class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center font-black text-sm text-white shadow">
+          M
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="headerPhaseBadge" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+              대기방
+            </span>
+            <span id="headerRoundText" class="text-xs font-bold text-white">라운드 1</span>
+          </div>
+          <span id="myProfileText" class="text-[11px] text-slate-400 font-semibold truncate block max-w-[130px] sm:max-w-none">
+            접속 중...
+          </span>
+        </div>
+      </div>
+
+      <!-- 타이머 & 빠른 조작부 -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        
+        <!-- 방장 전용 빠른 타이머 일시정지 & 연장 버튼 (방장 인증 시에만 노출) -->
+        <div id="hostQuickTimerControls" class="hidden items-center gap-1">
+          <button id="quickPauseBtn" class="px-2 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900 border border-amber-800 text-amber-300 text-xs font-bold" title="토론 시간 일시정지/재개">
+            ⏸️
+          </button>
+          <button id="quickAdd30Btn" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-bold" title="시간 30초 연장">
+            +30s
+          </button>
+        </div>
+
+        <!-- 타이머 디스플레이 -->
+        <div class="bg-slate-950 border border-slate-800 px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner">
+          <span id="timerIcon">⏱️</span>
+          <span id="timerText" class="font-mono text-xl sm:text-2xl font-black text-rose-500 tracking-wider">00:00</span>
+        </div>
+
+        <button id="soundBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700" title="사운드 ON/OFF">
+          🔊
+        </button>
+        <button id="rosterModalBtn" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 font-bold flex items-center gap-1">
+          <span>👥</span> <span id="rosterCountText">0명</span>
+        </button>
+        <button id="hostMenuBtn" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-xs text-slate-300 hover:text-rose-400 border border-slate-700 font-bold flex items-center gap-1 transition">
+          <span id="hostBtnIcon">🔑</span> <span id="hostBtnText">방장 인증</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 메인 레이아웃 (채팅 영역 + 우측 액션/직업 패널) -->
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-2.5 min-h-0 overflow-hidden">
+      
+      <!-- [좌측/중앙 2열] 실시간 다채널 인게임 채팅 -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-lg overflow-hidden min-h-0">
+        
+        <!-- 채널 탭 선택 바 -->
+        <div class="bg-slate-950 border-b border-slate-800 px-3 py-2 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <button id="tabPublicBtn" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 bg-rose-600 text-white shadow">
+              <span>💬</span> 전체 토론
+            </button>
+            <button id="tabMafiaBtn" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 text-slate-400 hover:text-white hidden">
+              <span>🩸</span> 마피아 비밀방
+            </button>
+            <button id="tabDeadBtn" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 text-slate-400 hover:text-white hidden">
+              <span>👻</span> 유령 관전방
+            </button>
+          </div>
+          <span id="chatNoticeText" class="text-[10px] text-slate-400 truncate hidden sm:inline">
+            낮에는 자유롭게 토론하세요
+          </span>
+        </div>
+
+        <!-- 메시지 피드 영역 -->
+        <div id="chatMessageList" class="flex-1 p-3.5 overflow-y-auto space-y-2 text-xs no-scrollbar">
+          <!-- 동적 메시지 렌더링 -->
+        </div>
+
+        <!-- 채팅 입력창 -->
+        <form id="chatForm" class="p-2.5 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
+          <input type="text" id="chatInput" placeholder="메시지를 입력하세요... (Enter)" maxlength="150" autocomplete="off"
+            class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition">
+          <button type="submit" id="chatSendBtn" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1">
+            전송
+          </button>
+        </form>
+
+      </div>
+
+      <!-- [우측 1열] 비밀 직업 카드 & 페이즈별 액션 패널 -->
+      <div class="flex flex-col gap-2.5 min-h-0 overflow-y-auto no-scrollbar">
+        
+        <!-- [1] 비밀 직업 확인 카드 (Hold to Reveal) -->
+        <div class="relative bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-4 shadow-md text-center overflow-hidden">
+          <div id="roleCover" class="absolute inset-0 bg-slate-950/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-3 transition-opacity duration-200 cursor-pointer">
+            <span class="text-3xl mb-1 animate-bounce">👆</span>
+            <p class="text-xs font-black text-rose-400">화면을 꾹 누르고 있으면 직업 공개</p>
+            <p class="text-[10px] text-slate-500 mt-0.5">화면을 가리고 확인하세요</p>
+          </div>
+
+          <!-- 직업 내용 -->
+          <div>
+            <div id="roleIcon" class="text-4xl mb-1">🧑‍🌾</div>
+            <h3 id="roleName" class="text-lg font-black text-white">직업 대기 중</h3>
+            <p id="roleTeam" class="text-xs font-bold text-slate-400 mb-1.5">게임이 시작되면 배분됩니다</p>
+            <p id="roleDesc" class="text-[11px] text-slate-300 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 leading-relaxed">
+              방장이 게임을 시작할 때까지 대기해 주세요.
+            </p>
+
+            <!-- 마피아 동료 명단 (마피아 전용) -->
+            <div id="mafiaTeammatesBox" class="mt-2.5 p-2 bg-rose-950/40 border border-rose-900/60 rounded-xl text-left hidden">
+              <span class="text-[11px] font-black text-rose-300 flex items-center gap-1 mb-0.5">
+                <span>🩸</span> 마피아 동료:
+              </span>
+              <p id="mafiaTeammatesList" class="text-[11px] text-rose-200 font-bold"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- [2] 페이즈별 액션 인터랙션 패널 (투표, 밤 행동 등) -->
+        <div id="actionCard" class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-center min-h-[180px]">
+          <div class="text-center py-4 text-slate-400">
+            <span class="text-3xl block mb-1">⏳</span>
+            <p class="text-xs font-bold text-slate-300">게임 시작 대기 중</p>
+            <p class="text-[10px] text-slate-500 mt-1">방장이 게임을 시작하면 진행 패널이 열립니다.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ============================================== -->
+  <!-- [3] 팝업 모달들 (방장 메뉴, 참가자 명단 등) -->
+  <!-- ============================================== -->
+  <!-- 방장 관리자 모달 -->
+  <div id="hostModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-white flex items-center gap-2">
+          <span>👑</span> 방장 관리자 메뉴
+        </h3>
+        <button id="closeHostModalBtn" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <!-- 방장 권한이 없을 경우: PIN 입력창 (비밀번호 노출 텍스트 완전 삭제됨) -->
+      <div id="hostPinSection">
+        <p class="text-xs text-slate-400 mb-2">방장 권한을 획득하려면 관리자 비밀번호를 입력하세요.</p>
+        <div class="flex gap-2">
+          <input type="password" id="hostPinInput" placeholder="비밀번호 입력" maxlength="4"
+            class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-center text-white font-mono text-sm focus:outline-none focus:border-rose-500">
+          <button id="submitHostPinBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow">
+            인증
+          </button>
+        </div>
+      </div>
+
+      <!-- 방장 권한이 있을 경우: 조작 & 역할 선택 패널 -->
+      <div id="hostControlsSection" class="hidden flex flex-col gap-3">
+        
+        <!-- 방장 역할 선택 (사회자 vs 참가자) -->
+        <div class="p-3 bg-slate-950 rounded-2xl border border-slate-800">
+          <span class="text-xs font-bold text-white block mb-1.5 flex items-center gap-1.5">
+            <span>🎭</span> 방장 역할 선택
+          </span>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="modePlayerBtn" class="py-2.5 px-2 rounded-xl text-xs font-bold transition border border-rose-600 bg-rose-600 text-white shadow">
+              🎮 참가자 모드<br><span class="text-[9px] font-normal opacity-90">(나도 직업 배분받고 플레이)</span>
+            </button>
+            <button id="modeModeratorBtn" class="py-2.5 px-2 rounded-xl text-xs font-bold transition border border-slate-800 bg-slate-900 text-slate-400 hover:text-white">
+              🎙️ 사회자 모드<br><span class="text-[9px] font-normal opacity-90">(미참여 / 시간제어 및 진행)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 실시간 타이머 조작부 (사회자/방장 권한) -->
+        <div class="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col gap-2">
+          <span class="text-xs font-bold text-slate-300 flex items-center justify-between">
+            <span>⏱️ 토론 시간 조절</span>
+            <span id="timerPauseStatus" class="text-[10px] text-emerald-400 font-bold">진행 중 ▶</span>
+          </span>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button id="hostTimerPauseBtn" class="py-2 bg-amber-950/60 hover:bg-amber-900 text-amber-300 font-bold text-xs rounded-xl border border-amber-800 transition">
+              ⏸️ 일시정지
+            </button>
+            <button id="hostTimerAdd30Btn" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition">
+              +30초 연장
+            </button>
+            <button id="hostNextPhaseBtn" class="py-2 bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold text-xs rounded-xl border border-slate-700 transition">
+              ⏩ 다음단계
+            </button>
+          </div>
+        </div>
+
+        <!-- 게임 진행 & 초기화 버튼들 -->
+        <button id="hostStartGameBtn" class="w-full py-3.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-sm rounded-xl shadow-lg shadow-rose-950 transition">
+          🎮 게임 시작 (직업 자동 배분)
+        </button>
+        <button id="hostResetGameBtn" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition">
+          🔄 다음 판 준비 (참가자 유지)
+        </button>
+        <button id="copyInviteBtn" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl border border-slate-700 transition">
+          📋 방 링크 복사 (친구 초대)
+        </button>
+        <button id="hostKickAllBtn" class="w-full py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 font-bold text-xs rounded-xl border border-rose-800 transition">
+          ⚠️ 방 완전 초기화 (전원 퇴장)
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 참가자 전체 명단 모달 -->
+  <div id="rosterModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 max-h-[80vh]">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-white flex items-center gap-2">
+          <span>👥</span> 참가자 명단 (<span id="modalPlayerCount">0명</span>)
+        </h3>
+        <button id="closeRosterModalBtn" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div id="modalPlayerList" class="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar text-xs">
+        <!-- 동적 렌더링 -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    socket.emit('online:init');
+
+    let myPlayer = null;
+    let mySecretRole = null;
+    let currentServerState = null;
+    let currentChannel = 'public'; // public, mafia, dead
+    let isSoundOn = true;
+    let isHostAuthed = false;
+    let isModeratorMode = false;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+      if (!isSoundOn || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        if (type === 'chime') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        } else if (type === 'gong') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.0);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 1.1);
+        }
+      } catch(e){}
+    }
+
+    // 1. 세션 복구 및 입장
+    let storedToken = localStorage.getItem('mafia_online_token');
+    let storedName = localStorage.getItem('mafia_online_name');
+
+    if (storedToken && storedName) {
+      document.getElementById('nameInput').value = storedName;
+      socket.emit('online:player_join', { name: storedName, token: storedToken });
+    }
+
+    document.getElementById('joinBtn').onclick = () => {
+      const name = document.getElementById('nameInput').value.trim();
+      if (!name) {
+        alert('닉네임을 입력해 주세요!');
+        return;
+      }
+      initAudio();
+      localStorage.setItem('mafia_online_name', name);
+      socket.emit('online:player_join', { name, token: storedToken });
+    };
+
+    socket.on('online:joined_success', (player) => {
+      myPlayer = player;
+      if (player.token) {
+        localStorage.setItem('mafia_online_token', player.token);
+        storedToken = player.token;
+      }
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('gameScreen').classList.remove('hidden');
+      updateProfileDisplay();
+    });
+
+    socket.on('error_message', (msg) => {
+      alert(msg);
+    });
+
+    function updateProfileDisplay() {
+      if (!myPlayer) return;
+      const hostTag = isHostAuthed ? (isModeratorMode ? ' [사회자 🎙️]' : ' [방장 👑]') : '';
+      document.getElementById('myProfileText').textContent = `${myPlayer.name}${hostTag}`;
+      
+      if (isHostAuthed) {
+        document.getElementById('hostBtnIcon').textContent = '👑';
+        document.getElementById('hostBtnText').textContent = '방장 메뉴';
+        document.getElementById('hostPinSection').classList.add('hidden');
+        document.getElementById('hostControlsSection').classList.remove('hidden');
+        document.getElementById('hostQuickTimerControls').classList.remove('hidden');
+        document.getElementById('hostQuickTimerControls').classList.add('flex');
+      } else {
+        document.getElementById('hostBtnIcon').textContent = '🔑';
+        document.getElementById('hostBtnText').textContent = '방장 인증';
+        document.getElementById('hostPinSection').classList.remove('hidden');
+        document.getElementById('hostControlsSection').classList.add('hidden');
+        document.getElementById('hostQuickTimerControls').classList.add('hidden');
+        document.getElementById('hostQuickTimerControls').classList.remove('flex');
+      }
+    }
+
+    // 2. 방장 인증
+    document.getElementById('submitHostPinBtn').onclick = () => {
+      const pin = document.getElementById('hostPinInput').value.trim();
+      socket.emit('online:claim_host', { pin });
+    };
+
+    socket.on('online:host_verified', (data) => {
+      isHostAuthed = true;
+      isModeratorMode = !!data.isModerator;
+      updateProfileDisplay();
+      updateHostModeButtons();
+      alert('방장 권한이 승인되었습니다!');
+    });
+
+    // 방장 역할 모드 토글 (사회자 vs 참가자)
+    const modePlayerBtn = document.getElementById('modePlayerBtn');
+    const modeModeratorBtn = document.getElementById('modeModeratorBtn');
+
+    function updateHostModeButtons() {
+      if (isModeratorMode) {
+        modeModeratorBtn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold transition border border-amber-500 bg-amber-950/80 text-amber-300 shadow';
+        modePlayerBtn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold transition border border-slate-800 bg-slate-900 text-slate-400 hover:text-white';
+      } else {
+        modePlayerBtn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold transition border border-rose-600 bg-rose-600 text-white shadow';
+        modeModeratorBtn.className = 'py-2.5 px-2 rounded-xl text-xs font-bold transition border border-slate-800 bg-slate-900 text-slate-400 hover:text-white';
+      }
+      updateProfileDisplay();
+    }
+
+    modePlayerBtn.onclick = () => {
+      isModeratorMode = false;
+      updateHostModeButtons();
+      socket.emit('online:set_host_mode', { isModerator: false });
+    };
+
+    modeModeratorBtn.onclick = () => {
+      isModeratorMode = true;
+      updateHostModeButtons();
+      socket.emit('online:set_host_mode', { isModerator: true });
+    };
+
+    // 3. 타이머 제어
+    const hostTimerPauseBtn = document.getElementById('hostTimerPauseBtn');
+    const quickPauseBtn = document.getElementById('quickPauseBtn');
+
+    function toggleTimer() {
+      socket.emit('online:timer_toggle');
+    }
+
+    hostTimerPauseBtn.onclick = toggleTimer;
+    quickPauseBtn.onclick = toggleTimer;
+
+    document.getElementById('hostTimerAdd30Btn').onclick = () => socket.emit('online:timer_add', { seconds: 30 });
+    document.getElementById('quickAdd30Btn').onclick = () => socket.emit('online:timer_add', { seconds: 30 });
+    document.getElementById('hostNextPhaseBtn').onclick = () => socket.emit('online:next_phase');
+
+    // 4. 비밀 직업 수신
+    socket.on('online:secret_role', (roleData) => {
+      mySecretRole = roleData;
+      document.getElementById('roleIcon').textContent = roleData.icon;
+      document.getElementById('roleName').textContent = roleData.roleName;
+      document.getElementById('roleTeam').textContent = roleData.team === 'MAFIA' ? '🩸 마피아 진영' : (roleData.team === 'SPECTATOR' ? '🎙️ 진행 사회자' : '🕊️ 시민 진영');
+      document.getElementById('roleTeam').className = `text-xs font-bold mb-1.5 ${roleData.team === 'MAFIA' ? 'text-rose-400' : (roleData.team === 'SPECTATOR' ? 'text-amber-400' : 'text-sky-400')}`;
+      document.getElementById('roleDesc').textContent = roleData.desc;
+
+      if (roleData.team === 'MAFIA') {
+        document.getElementById('tabMafiaBtn').classList.remove('hidden');
+        if (roleData.teammates && roleData.teammates.length > 0) {
+          document.getElementById('mafiaTeammatesBox').classList.remove('hidden');
+          document.getElementById('mafiaTeammatesList').textContent = roleData.teammates.map(t => t.name).join(', ');
+        }
+      } else {
+        document.getElementById('tabMafiaBtn').classList.add('hidden');
+        document.getElementById('mafiaTeammatesBox').classList.add('hidden');
+      }
+    });
+
+    // 직업 가림막 홀드 이벤트
+    const cover = document.getElementById('roleCover');
+    const showRole = (e) => { e.preventDefault(); cover.style.opacity = '0'; cover.style.pointerEvents = 'none'; };
+    const hideRole = () => { cover.style.opacity = '1'; cover.style.pointerEvents = 'auto'; };
+    cover.addEventListener('mousedown', showRole);
+    window.addEventListener('mouseup', hideRole);
+    cover.addEventListener('touchstart', showRole);
+    window.addEventListener('touchend', hideRole);
+
+    // 5. 실시간 다채널 채팅
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const chatList = document.getElementById('chatMessageList');
+
+    chatForm.onsubmit = (e) => {
+      e.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text) return;
+      socket.emit('online:chat_send', { text, channel: currentChannel });
+      chatInput.value = '';
+    };
+
+    socket.on('online:chat_message', (msg) => {
+      if (msg.channel === 'all' || msg.channel === currentChannel || (msg.isSystem && currentChannel === 'public')) {
+        renderChatMessage(msg);
+      }
+    });
+
+    function renderChatMessage(msg) {
+      const isMe = myPlayer && msg.sender.includes(myPlayer.name);
+      const el = document.createElement('div');
+
+      if (msg.isSystem) {
+        el.className = 'py-1 px-3 rounded-xl bg-slate-950/80 border border-slate-800 text-center text-slate-300 font-bold my-1 text-[11px] leading-relaxed';
+        el.innerHTML = `<span>${msg.text}</span>`;
+      } else {
+        el.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1`;
+        el.innerHTML = `
+          <div class="flex items-center gap-1.5 mb-0.5">
+            <span class="text-[10px] font-bold ${isMe ? 'text-rose-400' : 'text-slate-400'}">${msg.sender}</span>
+            <span class="text-[9px] text-slate-600">${msg.time}</span>
+          </div>
+          <div class="px-3 py-2 rounded-2xl max-w-[85%] break-words ${
+            msg.isModerator ? 'bg-amber-950/80 border border-amber-800 text-amber-200' :
+            isMe ? 'bg-rose-600 text-white rounded-tr-none' : 
+            msg.channel === 'mafia' ? 'bg-rose-950 border border-rose-900 text-rose-200 rounded-tl-none' :
+            msg.channel === 'dead' ? 'bg-slate-800 text-slate-300 rounded-tl-none italic' :
+            'bg-slate-800 text-slate-100 rounded-tl-none'
+          }">
+            ${msg.text}
+          </div>
+        `;
+      }
+
+      chatList.appendChild(el);
+      chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    const tabPub = document.getElementById('tabPublicBtn');
+    const tabMaf = document.getElementById('tabMafiaBtn');
+    const tabDed = document.getElementById('tabDeadBtn');
+
+    function setChannel(ch) {
+      currentChannel = ch;
+      [tabPub, tabMaf, tabDed].forEach(btn => {
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 text-slate-400 hover:text-white';
+      });
+
+      if (ch === 'public') {
+        tabPub.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 bg-rose-600 text-white shadow';
+        document.getElementById('chatNoticeText').textContent = '낮 토론 전체 채팅 채널';
+      } else if (ch === 'mafia') {
+        tabMaf.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 bg-rose-950 text-rose-300 border border-rose-800 shadow';
+        document.getElementById('chatNoticeText').textContent = '🩸 마피아들만의 비밀 작전 회의';
+      } else if (ch === 'dead') {
+        tabDed.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 bg-slate-800 text-slate-200 shadow';
+        document.getElementById('chatNoticeText').textContent = '👻 사망자 관전 채널';
+      }
+    }
+
+    tabPub.onclick = () => setChannel('public');
+    tabMaf.onclick = () => setChannel('mafia');
+    tabDed.onclick = () => setChannel('dead');
+
+    // 6. 타이머 및 상태 업데이트
+    socket.on('online:timer_tick', (data) => {
+      const sec = typeof data === 'object' ? data.seconds : data;
+      const isPaused = typeof data === 'object' ? data.isPaused : false;
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      document.getElementById('timerText').textContent = `${m}:${s}`;
+      
+      if (isPaused) {
+        document.getElementById('timerIcon').textContent = '⏸️';
+        document.getElementById('timerPauseStatus').textContent = '일시정지 중 ⏸️';
+        document.getElementById('timerPauseStatus').className = 'text-[10px] text-amber-400 font-bold';
+        hostTimerPauseBtn.textContent = '▶️ 재개하기';
+        quickPauseBtn.textContent = '▶️';
+      } else {
+        document.getElementById('timerIcon').textContent = '⏱️';
+        document.getElementById('timerPauseStatus').textContent = '진행 중 ▶';
+        document.getElementById('timerPauseStatus').className = 'text-[10px] text-emerald-400 font-bold';
+        hostTimerPauseBtn.textContent = '⏸️ 일시정지';
+        quickPauseBtn.textContent = '⏸️';
+      }
+      if (sec === 10 && !isPaused) playSound('chime');
+    });
+
+    socket.on('online:state_update', (state) => {
+      currentServerState = state;
+      renderGameState(state);
+    });
+
+    function renderGameState(state) {
+      document.getElementById('headerRoundText').textContent = `라운드 ${state.round}`;
+      document.getElementById('rosterCountText').textContent = `${state.playerCount}명`;
+      document.getElementById('modalPlayerCount').textContent = `${state.playerCount}명`;
+
+      const me = myPlayer ? state.players.find(p => p.id === myPlayer.id) : null;
+      const isAlive = me ? me.isAlive : true;
+      const isMod = me ? me.isModerator : false;
+      const badge = document.getElementById('headerPhaseBadge');
+      const actionCard = document.getElementById('actionCard');
+
+      if (!isAlive && !isMod) {
+        document.getElementById('tabDeadBtn').classList.remove('hidden');
+      }
+
+      if (state.phase === 'LOBBY') {
+        badge.textContent = '대기방';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700';
+        actionCard.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">🎮</span>
+            <p class="text-xs font-bold text-slate-200">현재 ${state.playerCount}명 접속 중 (실제 플레이어: ${state.playingCount}명)</p>
+            <p class="text-[10px] text-slate-400 mt-1">방장이 [방장 메뉴]에서 역할을 확인하고 게임을 시작합니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'FIRST_NIGHT') {
+        badge.textContent = '직업 확인 (밤)';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800';
+        actionCard.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">${isMod ? '🎙️' : '🤫'}</span>
+            <p class="text-xs font-bold text-white">${isMod ? '사회자로서 전체를 관전 중입니다' : '비밀 직업을 확인하세요'}</p>
+            <p class="text-[10px] text-slate-400 mt-1">${isMod ? '상단 일시정지 및 연장 버튼으로 토론을 제어할 수 있습니다.' : '카드를 꾹 눌러 본인의 역할을 확인하세요.'}</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_DISCUSS') {
+        badge.textContent = `낮 토론 (${state.round}일)`;
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+        actionCard.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">🗣️</span>
+            <p class="text-xs font-bold text-white">${isMod ? '사회자: 자유 토론 진행 중' : '채팅창에서 자유롭게 토론하세요'}</p>
+            <p class="text-[10px] text-slate-400 mt-1">${isMod ? '시간이 부족하면 상단 [+30s] 버튼을 눌러 연장해 주세요.' : '시간이 끝나면 지목 투표가 진행됩니다.'}</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_NOMINATE') {
+        badge.textContent = '처형 후보 지목';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        if (isAlive && !isMod) {
+          const others = state.players.filter(p => p.isAlive && !p.isModerator && p.id !== myPlayer?.id);
+          actionCard.innerHTML = `
+            <div>
+              <span class="text-xs font-bold text-rose-400 block mb-1.5">처형할 의심 인물 지목:</span>
+              <select id="nominateSelect" class="w-full bg-slate-950 text-white rounded-xl p-2.5 border border-slate-700 text-xs mb-2">
+                ${others.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="nominateBtn" class="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow">
+                지목 투표 제출
+              </button>
+            </div>
+          `;
+          document.getElementById('nominateBtn').onclick = () => {
+            const targetId = document.getElementById('nominateSelect').value;
+            socket.emit('online:nominate', { targetId });
+            actionCard.innerHTML = `<div class="text-center py-4 text-emerald-400 font-bold text-xs">✅ 지목 투표가 완료되었습니다.</div>`;
+          };
+        } else {
+          actionCard.innerHTML = `<div class="text-center py-4 text-slate-400 text-xs">참가자들의 지목 투표를 집계 중입니다...</div>`;
+        }
+      } else if (state.phase === 'DAY_TRIAL') {
+        badge.textContent = '최후 변론';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30';
+        actionCard.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-3xl block mb-1">⚖️</span>
+            <p class="text-xs font-bold text-white">[${state.trialCandidate?.name}] 님의 최후 변론</p>
+            <p class="text-[10px] text-slate-400 mt-1">변론이 끝나면 찬반 투표가 진행됩니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_VERDICT') {
+        badge.textContent = '찬반 투표';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white shadow';
+        if (isAlive && !isMod) {
+          if (state.trialCandidate?.id === myPlayer?.id) {
+            actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">당신은 피고인입니다. 투표를 기다리세요.</div>`;
+          } else {
+            actionCard.innerHTML = `
+              <div class="flex flex-col gap-2">
+                <span class="text-xs font-bold text-center text-white">[${state.trialCandidate?.name}] 처형 찬반 투표</span>
+                <div class="grid grid-cols-2 gap-2">
+                  <button id="voteG" class="py-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow">
+                    유죄 (처형 찬성)
+                  </button>
+                  <button id="voteI" class="py-3 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow">
+                    무죄 (처형 반대)
+                  </button>
+                </div>
+              </div>
+            `;
+            document.getElementById('voteG').onclick = () => {
+              socket.emit('online:verdict', { vote: 'guilty' });
+              actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">유죄 투표 제출 완료</div>`;
+            };
+            document.getElementById('voteI').onclick = () => {
+              socket.emit('online:verdict', { vote: 'innocent' });
+              actionCard.innerHTML = `<div class="text-center py-4 text-sky-400 font-bold text-xs">무죄 투표 제출 완료</div>`;
+            };
+          }
+        } else {
+          actionCard.innerHTML = `<div class="text-center py-4 text-slate-400 text-xs">찬반 투표가 진행 중입니다...</div>`;
+        }
+      } else if (state.phase === 'NIGHT') {
+        badge.textContent = '밤 페이즈';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-slate-700';
+
+        if (isAlive && !isMod && mySecretRole) {
+          if (mySecretRole.team === 'MAFIA') {
+            const nonMafia = state.players.filter(p => p.isAlive && !p.isModerator);
+            actionCard.innerHTML = `
+              <div class="flex flex-col gap-2">
+                <span class="text-xs font-black text-rose-400 flex items-center gap-1">
+                  <span>🩸</span> 습격 대상 선택 (마피아 전용)
+                </span>
+                <select id="mafiaKillSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-2.5 border border-slate-700">
+                  ${nonMafia.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <button id="mafiaKillSubmit" class="w-full py-2.5 bg-rose-700 hover:bg-rose-600 text-white font-black text-xs rounded-xl shadow">
+                  습격 지정
+                </button>
+              </div>
+            `;
+            document.getElementById('mafiaKillSubmit').onclick = () => {
+              const targetId = document.getElementById('mafiaKillSelect').value;
+              socket.emit('online:night_action', { action: 'mafia_kill', targetId });
+              actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">습격 대상을 지정했습니다.</div>`;
+            };
+          } else if (mySecretRole.role === 'POLICE') {
+            const targets = state.players.filter(p => p.isAlive && !p.isModerator && p.id !== myPlayer?.id);
+            actionCard.innerHTML = `
+              <div class="flex flex-col gap-2">
+                <span class="text-xs font-black text-sky-400">🔍 용의자 조사 (경찰 전용)</span>
+                <select id="policeSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-2.5 border border-slate-700">
+                  ${targets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <button id="policeSubmit" class="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow">
+                  조사 실행
+                </button>
+              </div>
+            `;
+            document.getElementById('policeSubmit').onclick = () => {
+              const targetId = document.getElementById('policeSelect').value;
+              socket.emit('online:night_action', { action: 'police_check', targetId });
+            };
+          } else if (mySecretRole.role === 'DOCTOR') {
+            const targets = state.players.filter(p => p.isAlive && !p.isModerator);
+            actionCard.innerHTML = `
+              <div class="flex flex-col gap-2">
+                <span class="text-xs font-black text-emerald-400">💉 치료 대상 선택 (의사 전용)</span>
+                <select id="doctorSelect" class="w-full bg-slate-950 text-xs text-white rounded-xl p-2.5 border border-slate-700">
+                  ${targets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <button id="doctorSubmit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow">
+                  치료 지정
+                </button>
+              </div>
+            `;
+            document.getElementById('doctorSubmit').onclick = () => {
+              const targetId = document.getElementById('doctorSelect').value;
+              socket.emit('online:night_action', { action: 'doctor_heal', targetId });
+              actionCard.innerHTML = `<div class="text-center py-4 text-emerald-400 font-bold text-xs">선택한 플레이어를 보호합니다.</div>`;
+            };
+          } else {
+            actionCard.innerHTML = `
+              <div class="text-center py-4">
+                <span class="text-3xl block mb-1 pulse-slow">🌙</span>
+                <p class="text-xs font-bold text-slate-300">평온하게 잠을 자는 중...</p>
+                <p class="text-[10px] text-slate-500 mt-0.5">조용히 아침을 기다리세요.</p>
+              </div>
+            `;
+          }
+        } else {
+          actionCard.innerHTML = `
+            <div class="text-center py-4">
+              <span class="text-3xl block mb-1">🌙</span>
+              <p class="text-xs font-bold text-slate-300">${isMod ? '사회자: 밤 행동 진행 중' : '관전 중입니다...'}</p>
+            </div>
+          `;
+        }
+      } else if (state.phase === 'GAME_OVER') {
+        badge.textContent = '게임 종료';
+        badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white';
+        actionCard.innerHTML = `
+          <div class="text-center py-4">
+            <span class="text-4xl block mb-1">${state.winner === 'MAFIA' ? '👑' : '🎉'}</span>
+            <h4 class="text-base font-black ${state.winner === 'MAFIA' ? 'text-rose-500' : 'text-emerald-400'} mb-1">
+              ${state.winner === 'MAFIA' ? '마피아 승리!' : '시민 승리!'}
+            </h4>
+            <p class="text-[10px] text-slate-400">채팅창에 전체 직업이 공개되었습니다.</p>
+          </div>
+        `;
+      }
+
+      // 모달 참가자 목록
+      const modalList = document.getElementById('modalPlayerList');
+      modalList.innerHTML = state.players.map(p => `
+        <div class="p-2.5 rounded-xl border flex items-center justify-between ${p.isAlive ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/50 border-slate-900 opacity-40'}">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-xs text-rose-400">
+              ${p.isModerator ? '🎙️' : '👤'}
+            </span>
+            <span class="font-bold text-white text-xs">${p.name} ${p.isModerator ? '<span class="text-amber-400 text-[10px] font-bold">[사회자]</span>' : (p.isHost ? '👑' : '')}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold ${p.isModerator ? 'text-amber-400' : (p.isAlive ? 'text-emerald-400' : 'text-slate-500')}">
+              ${p.isModerator ? '사회자' : (p.isAlive ? '생존' : '사망')}
+            </span>
+            ${state.phase === 'LOBBY' && isHostAuthed && p.id !== myPlayer?.id ? `
+              <button onclick="kickPlayer('${p.id}')" class="text-[10px] text-rose-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800 hover:bg-rose-900">퇴장</button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    socket.on('online:police_result', (res) => {
+      alert(`[경찰 조사 결과]\n${res.targetName} 님은 ${res.isMafia ? '🔴 마피아입니다!' : '🟢 선량한 시민입니다.'}`);
+    });
+
+    socket.on('online:player_reset', () => {
+      mySecretRole = null;
+      document.getElementById('roleIcon').textContent = '🧑‍🌾';
+      document.getElementById('roleName').textContent = '직업 대기 중';
+      document.getElementById('roleTeam').textContent = '게임이 시작되면 배분됩니다';
+      document.getElementById('roleTeam').className = 'text-xs font-bold mb-1.5 text-slate-400';
+      document.getElementById('roleDesc').textContent = '방장이 게임을 시작할 때까지 대기해 주세요.';
+      document.getElementById('mafiaTeammatesBox').classList.add('hidden');
+      document.getElementById('tabMafiaBtn').classList.add('hidden');
+      document.getElementById('tabDeadBtn').classList.add('hidden');
+      setChannel('public');
+      cover.style.opacity = '1';
+      cover.style.pointerEvents = 'auto';
+    });
+
+    socket.on('online:force_kick', () => {
+      localStorage.removeItem('mafia_online_token');
+      localStorage.removeItem('mafia_online_name');
+      alert('방이 초기화되어 퇴장되었습니다.');
+      window.location.reload();
+    });
+
+    // 7. 모달 열기/닫기
+    const hostModal = document.getElementById('hostModal');
+    document.getElementById('hostMenuBtn').onclick = () => hostModal.classList.remove('hidden');
+    document.getElementById('closeHostModalBtn').onclick = () => hostModal.classList.add('hidden');
+
+    document.getElementById('hostStartGameBtn').onclick = () => {
+      socket.emit('online:start_game');
+      hostModal.classList.add('hidden');
+    };
+
+    document.getElementById('hostResetGameBtn').onclick = () => {
+      socket.emit('online:reset_game');
+      hostModal.classList.add('hidden');
+    };
+
+    document.getElementById('copyInviteBtn').onclick = () => {
+      navigator.clipboard.writeText(window.location.origin + '/online');
+      alert('초대 링크(/online)가 복사되었습니다! 카카오톡이나 디스코드에 붙여넣으세요.');
+    };
+
+    document.getElementById('hostKickAllBtn').onclick = () => {
+      if (confirm('모든 참가자를 퇴장시키고 방을 처음 상태로 완전히 초기화하시겠습니까?')) {
+        socket.emit('online:kick_all');
+        hostModal.classList.add('hidden');
+      }
+    };
+
+    window.kickPlayer = (id) => {
+      if (confirm('이 플레이어를 퇴장시키겠습니까?')) {
+        socket.emit('online:kick_player', { id });
+      }
+    };
+
+    const rosterModal = document.getElementById('rosterModal');
+    document.getElementById('rosterModalBtn').onclick = () => rosterModal.classList.remove('hidden');
+    document.getElementById('closeRosterModalBtn').onclick = () => rosterModal.classList.add('hidden');
+
+    document.getElementById('soundBtn').onclick = () => {
+      initAudio();
+      isSoundOn = !isSoundOn;
+      document.getElementById('soundBtn').textContent = isSoundOn ? '🔊' : '🔇';
+    };
+  </script>
+</body>
+</html>

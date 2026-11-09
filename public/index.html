@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마피아 마스터 - 게임 모드 선택</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
+    body { font-family: 'Pretendard', sans-serif; user-select: none; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between p-4 sm:p-6 antialiased">
+
+  <!-- 상단 로고 -->
+  <header class="max-w-4xl w-full mx-auto flex items-center justify-between py-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-rose-950">
+        M
+      </div>
+      <div>
+        <h1 class="font-black text-lg text-white">MAFIA MASTER</h1>
+        <p class="text-xs text-rose-400 font-bold">5~35인 통합 마피아 플랫폼</p>
+      </div>
+    </div>
+    <span class="text-xs font-mono font-bold px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-400">
+      v2.0 DUAL
+    </span>
+  </header>
+
+  <!-- 메인 모드 선택 카드 -->
+  <main class="max-w-4xl w-full mx-auto my-auto py-8 flex flex-col gap-8 text-center">
+    <div>
+      <h2 class="text-3xl sm:text-4xl font-black text-white tracking-tight mb-2">어떤 방식으로 플레이하시겠습니까?</h2>
+      <p class="text-sm text-slate-400 max-w-lg mx-auto">
+        현장에서 함께 모여 즐기는 <strong>대면 모임 모드</strong>와, 각자 집에서 채팅으로 즐기는 <strong>비대면 온라인 모드</strong>를 모두 지원합니다.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+      
+      <!-- [모드 1] 대면 오프라인 모임 모드 -->
+      <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 hover:border-rose-500/50 rounded-3xl p-6 sm:p-8 flex flex-col justify-between shadow-2xl transition duration-300 transform hover:-translate-y-1 group">
+        <div>
+          <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">
+            🏢
+          </div>
+          <span class="text-xs font-mono font-bold text-rose-400 block mb-1">OFFLINE GATHERING</span>
+          <h3 class="text-2xl font-black text-white mb-2">대면 모임 모드</h3>
+          <p class="text-xs text-slate-400 leading-relaxed mb-6">
+            MT, 워크숍, 파티룸 등 한 공간에 모여서 육성으로 토론하고, 빔프로젝터 전광판과 스마트폰 QR 코드로 사회자 없이 자동 진행하는 모드입니다.
+          </p>
+          <ul class="text-xs text-slate-300 space-y-2 mb-6">
+            <li class="flex items-center gap-2"><span>📺</span> 빔프로젝터/TV 대형 화면 연동</li>
+            <li class="flex items-center gap-2"><span>📱</span> 스마트폰 비밀 직업 확인 & 익명 투표</li>
+            <li class="flex items-center gap-2"><span>🔒</span> 관리자 비밀번호 잠금 기능</li>
+          </ul>
+        </div>
+
+        <div class="flex flex-col gap-2 pt-4 border-t border-slate-800/80">
+          <a href="/host" class="w-full py-3.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-bold text-xs rounded-xl text-center shadow-lg shadow-rose-950 transition">
+            📺 빔프로젝터 화면 열기 (/host)
+          </a>
+          <a href="/offline" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl text-center border border-slate-700 transition">
+            📱 스마트폰 참가 화면 열기 (/offline)
+          </a>
+        </div>
+      </div>
+
+      <!-- [모드 2] 비대면 온라인 채팅 모드 -->
+      <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 hover:border-sky-500/50 rounded-3xl p-6 sm:p-8 flex flex-col justify-between shadow-2xl transition duration-300 transform hover:-translate-y-1 group">
+        <div>
+          <div class="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition">
+            🌐
+          </div>
+          <span class="text-xs font-mono font-bold text-sky-400 block mb-1">ONLINE CHAT GAME</span>
+          <h3 class="text-2xl font-black text-white mb-2">비대면 온라인 모드</h3>
+          <p class="text-xs text-slate-400 leading-relaxed mb-6">
+            친구들과 각자 집에서 스마트폰이나 PC로 접속하여, 인게임 실시간 채팅과 마피아 비밀 회의실을 통해 100% 비대면으로 플레이하는 모드입니다.
+          </p>
+          <ul class="text-xs text-slate-300 space-y-2 mb-6">
+            <li class="flex items-center gap-2"><span>💬</span> 전체 토론 / 마피아 비밀 / 유령 관전 분리 채팅</li>
+            <li class="flex items-center gap-2"><span>⚖️</span> 최후 변론 시간 피고인 외 채팅 자동 잠금</li>
+            <li class="flex items-center gap-2"><span>🔗</span> 카톡/디스코드 초대 링크 원클릭 접속</li>
+          </ul>
+        </div>
+
+        <div class="flex flex-col gap-2 pt-4 border-t border-slate-800/80">
+          <a href="/online" class="w-full py-4 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 text-white font-bold text-xs rounded-xl text-center shadow-lg shadow-sky-950 transition">
+            🌐 비대면 온라인 게임 입장 (/online)
+          </a>
+          <span class="text-[11px] text-center text-slate-500">별도 화면 분리 없이 링크 하나로 전원 플레이</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="max-w-4xl w-full mx-auto text-center text-xs text-slate-600 py-4 border-t border-slate-900">
+    MAFIA MASTER PLATFORM • 5~35 PLAYERS DUAL ENGINE
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5~35인 마피아 - 빔프로젝터 메인 화면</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
+    body { font-family: 'Pretendard', sans-serif; user-select: none; }
+    .night-stars { background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); }
+    .shake {
+      animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+  <!-- ============================================== -->
+  <!-- [0] 호스트 비밀번호 잠금 화면 (기본 활성화) -->
+  <!-- ============================================== -->
+  <div id="authOverlay" class="fixed inset-0 bg-slate-950/98 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
+    <div id="authBox" class="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-5">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center text-3xl shadow-lg shadow-rose-950">
+        🔒
+      </div>
+      <div>
+        <h2 class="text-2xl font-black text-white">호스트 화면 잠금</h2>
+        <p class="text-xs text-slate-400 mt-1">게임 제어 및 빔프로젝터 화면을 열려면 관리자 비밀번호를 입력하세요.</p>
+      </div>
+
+      <div class="w-full">
+        <input type="password" id="passwordInput" placeholder="비밀번호 4자리 입력" maxlength="4" autofocus
+          class="w-full bg-slate-950 border border-slate-700 rounded-2xl py-3.5 px-4 text-center text-white font-mono text-xl tracking-widest focus:outline-none focus:border-rose-500 transition">
+        <p id="authError" class="text-xs text-rose-500 font-bold mt-2 hidden">비밀번호가 올바르지 않습니다.</p>
+      </div>
+
+      <button id="authSubmitBtn" class="w-full py-4 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-base rounded-2xl shadow-xl shadow-rose-950 transition">
+        확인 및 잠금 해제 ▶
+      </button>
+
+      <span class="text-[11px] text-slate-600">MAFIA MASTER SECURITY GATE</span>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- [1] 호스트 메인 화면 컨텐츠 -->
+  <!-- ============================================== -->
+  <div id="mainHostContent" class="flex-1 flex flex-col opacity-0 pointer-events-none transition-opacity duration-300">
+    
+    <!-- 상단 상태 헤더 -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 sticky top-0 z-50 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-red-800 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-rose-950">
+          M
+        </div>
+        <div>
+          <h1 class="font-extrabold text-lg text-white">MAFIA MASTER</h1>
+          <p class="text-xs text-rose-400 font-semibold">빔프로젝터 메인 전광판 (5~35인 자동 밸런스)</p>
+        </div>
+      </div>
+
+      <!-- 호스트 제어 버튼들 -->
+      <div class="flex items-center gap-2">
+        <button id="cleanupBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-amber-300 border border-slate-700 transition" title="새로고침 등으로 남은 유령 접속자를 즉시 정리합니다">
+          🧹 접속자 정리
+        </button>
+        <button id="audioToggleBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 transition">
+          🔊 사운드 ON
+        </button>
+        <button id="ttsToggleBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 transition">
+          🗣️ 음성 안내 ON
+        </button>
+        <button id="roundResetBtn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition font-bold" title="현재 접속 인원을 유지하고 새 게임을 시작합니다">
+          🔄 다음 게임 준비
+        </button>
+        <button id="lockScreenBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 border border-slate-700 transition" title="화면 다시 잠그기">
+          🔒 잠금
+        </button>
+        <button id="kickAllBtn" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-xs text-rose-300 border border-rose-800 transition" title="모든 참가자를 방에서 퇴장시키고 초기화합니다">
+          ⚠️ 방 완전 초기화
+        </button>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+
+      <!-- 대형 스테이지 헤더 & 타이머 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-wrap items-center justify-between gap-6 relative overflow-hidden">
+        <div class="flex items-center gap-5">
+          <div id="phaseIconBadge" class="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-4xl shadow-inner">
+            🎪
+          </div>
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <span id="roundBadge" class="text-xs font-black px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">대기 중</span>
+              <span class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">ROOM: #MAFIA30</span>
+            </div>
+            <h2 id="phaseTitle" class="text-2xl sm:text-3xl font-black text-white">참가자 스마트폰 입장 대기</h2>
+            <p id="phaseSubtitle" class="text-sm text-slate-400 mt-1">참가자들은 QR 코드를 스캔하여 닉네임을 입력하고 입장하세요. (최소 5인 ~ 최대 35인)</p>
+          </div>
+        </div>
+
+        <!-- 타이머 & 다음 단계 -->
+        <div class="flex items-center gap-5 ml-auto">
+          <div class="bg-slate-950 border border-slate-800 px-6 py-3 rounded-2xl flex flex-col items-center min-w-[140px] shadow-inner">
+            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">남은 시간</span>
+            <span id="timerText" class="font-mono text-4xl sm:text-5xl font-black text-rose-500">00:00</span>
+          </div>
+          <button id="nextPhaseBtn" class="px-5 py-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white rounded-xl text-sm font-black shadow-lg shadow-rose-950 transition">
+            다음 단계 ▶
+          </button>
+        </div>
+      </div>
+
+      <!-- 메인 인터랙션 스테이지 (QR 코드 및 대기방 / 투표 집계 / 결과) -->
+      <div id="stageArea" class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl min-h-[260px] flex items-center justify-center">
+        <!-- 동적 렌더링 -->
+      </div>
+
+      <!-- 5~35인 실시간 플레이어 현황판 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-extrabold text-lg text-white flex items-center gap-3">
+            <span>👥 실제 접속자 명단</span>
+            <span id="playerStats" class="text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">0명 접속 중</span>
+          </h3>
+          <div class="flex items-center gap-4 text-xs text-slate-300">
+            <span class="text-slate-500 text-[11px] hidden sm:inline">* 중복된 이름은 [X]를 눌러 정리할 수 있습니다.</span>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="revealCheck" class="rounded border-slate-700 bg-slate-950 text-rose-600">
+              <span>사회자용 직업 공개</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="rosterGrid" class="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10 gap-2.5">
+          <!-- 플레이어 타일 동적 렌더링 -->
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script>
+    // ==============================================
+    // 비밀번호 보안 인증 (2146)
+    // ==============================================
+    const CORRECT_PIN = '6208';
+    const authOverlay = document.getElementById('authOverlay');
+    const authBox = document.getElementById('authBox');
+    const passwordInput = document.getElementById('passwordInput');
+    const authError = document.getElementById('authError');
+    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const mainHostContent = document.getElementById('mainHostContent');
+    const lockScreenBtn = document.getElementById('lockScreenBtn');
+
+    function checkAuth() {
+      if (sessionStorage.getItem('mafia_host_authenticated') === 'true') {
+        authOverlay.classList.add('hidden');
+        mainHostContent.classList.remove('opacity-0', 'pointer-events-none');
+        return true;
+      } else {
+        authOverlay.classList.remove('hidden');
+        mainHostContent.classList.add('opacity-0', 'pointer-events-none');
+        passwordInput.value = '';
+        setTimeout(() => passwordInput.focus(), 100);
+        return false;
+      }
+    }
+
+    function verifyPin() {
+      const val = passwordInput.value.trim();
+      if (val === CORRECT_PIN) {
+        sessionStorage.setItem('mafia_host_authenticated', 'true');
+        authError.classList.add('hidden');
+        authOverlay.classList.add('hidden');
+        mainHostContent.classList.remove('opacity-0', 'pointer-events-none');
+        initAudio();
+      } else {
+        authError.classList.remove('hidden');
+        authBox.classList.add('shake');
+        setTimeout(() => authBox.classList.remove('shake'), 500);
+        passwordInput.value = '';
+        passwordInput.focus();
+      }
+    }
+
+    authSubmitBtn.onclick = verifyPin;
+    passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') verifyPin();
+    });
+
+    lockScreenBtn.onclick = () => {
+      sessionStorage.removeItem('mafia_host_authenticated');
+      checkAuth();
+    };
+
+    checkAuth();
+
+    // ==============================================
+    // 소켓 및 게임 로직
+    // ==============================================
+    const socket = io();
+    socket.emit('offline:init');
+    let currentServerState = null;
+    let isSoundOn = true;
+    let isTtsOn = true;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+      if (!isSoundOn || !audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        if (type === 'tick') {
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        } else if (type === 'gong') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(); osc.stop(audioCtx.currentTime + 1.3);
+        }
+      } catch(e){}
+    }
+
+    function speak(text) {
+      if (!isTtsOn || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR';
+      window.speechSynthesis.speak(u);
+    }
+
+    socket.on('error_message', (msg) => {
+      alert(msg);
+    });
+
+    socket.on('offline:state_update', (state) => {
+      currentServerState = state;
+      renderAll(state);
+    });
+
+    socket.on('offline:timer_tick', (sec) => {
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      document.getElementById('timerText').textContent = `${m}:${s}`;
+      if (sec <= 5 && sec > 0) playSound('tick');
+    });
+
+    function renderAll(state) {
+      const totalP = state.players.length;
+      document.getElementById('roundBadge').textContent = state.phase === 'LOBBY' ? '대기 중' : `라운드 ${state.round}`;
+      document.getElementById('playerStats').textContent = `실제 접속 ${totalP}명 (생존 ${state.players.filter(p => p.isAlive).length}명)`;
+
+      const stage = document.getElementById('stageArea');
+      const pTitle = document.getElementById('phaseTitle');
+      const pSub = document.getElementById('phaseSubtitle');
+
+      if (state.phase === 'LOBBY') {
+        pTitle.textContent = '스마트폰 카메라로 QR 코드를 스캔하세요!';
+        pSub.textContent = `현재 실제 연결된 인원: ${totalP}명 (5~35인 자동 밸런스)`;
+
+        stage.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center w-full">
+            <!-- QR 코드 생성 영역 -->
+            <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex flex-col items-center">
+              <div id="qrcodeBox" class="p-3 bg-white rounded-2xl shadow-xl mb-3"></div>
+              <span class="text-xs font-mono font-bold text-rose-400 bg-rose-950/60 px-3 py-1 rounded-full border border-rose-900/50">
+                ${window.location.origin}/offline
+              </span>
+              <p class="text-xs text-slate-400 mt-2">QR을 찍으면 별도 앱 없이 즉시 입장</p>
+            </div>
+
+            <!-- 현재 인원수에 맞춘 황금 직업 덱 -->
+            <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col justify-between h-full">
+              <div>
+                <span class="text-xs font-bold text-white flex justify-between mb-2">
+                  <span>🎭 ${totalP}인 맞춤 직업 덱</span>
+                  <span class="text-emerald-400 font-mono font-bold">합계: ${totalP}명</span>
+                </span>
+                <div class="space-y-1.5 text-xs text-slate-300">
+                  <div class="flex justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span>🩸 마피아 (보스 1명 포함)</span><span class="font-bold text-rose-400 font-mono">${state.roleDeckConfig.mafia}명</span>
+                  </div>
+                  <div class="flex justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span>🔍 경찰</span><span class="font-bold text-sky-400 font-mono">${state.roleDeckConfig.police}명</span>
+                  </div>
+                  <div class="flex justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span>💉 의사</span><span class="font-bold text-emerald-400 font-mono">${state.roleDeckConfig.doctor}명</span>
+                  </div>
+                  <div class="flex justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span>🕵️ 사설탐정</span><span class="font-bold text-amber-400 font-mono">${state.roleDeckConfig.detective}명</span>
+                  </div>
+                  <div class="flex justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span>🧑‍🌾 선량한 시민</span><span class="font-bold text-slate-400 font-mono">${state.roleDeckConfig.citizen}명</span>
+                  </div>
+                </div>
+              </div>
+              <p class="text-[10px] text-slate-500 mt-2">현재 실제 접속한 인원수(${totalP}명)를 기준으로 실시간 계산됩니다.</p>
+            </div>
+
+            <!-- 시작 버튼 -->
+            <div class="flex flex-col gap-3 justify-center">
+              <button id="startBtn" class="w-full py-5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-lg rounded-2xl shadow-xl shadow-rose-950 transition transform hover:-translate-y-0.5">
+                🎮 게임 시작 (${totalP}명 직업 배분)
+              </button>
+              ${totalP < 5 ? '<p class="text-xs text-rose-400 text-center font-bold">⚠️ 최소 5명 이상 접속해야 시작할 수 있습니다.</p>' : ''}
+            </div>
+          </div>
+        `;
+
+        new QRCode(document.getElementById('qrcodeBox'), {
+          text: window.location.origin,
+          width: 130,
+          height: 130
+        });
+
+        document.getElementById('startBtn').onclick = () => {
+          if (totalP < 5) {
+            alert('최소 5명 이상 접속해야 게임을 시작할 수 있습니다.');
+            return;
+          }
+          initAudio();
+          socket.emit('offline:host_start_game');
+        };
+
+      } else if (state.phase === 'FIRST_NIGHT') {
+        pTitle.textContent = '비밀 직업 확인의 첫날 밤';
+        pSub.textContent = '참가자들은 각자의 스마트폰 화면을 꾹 눌러 직업을 확인하세요. 절대 고개를 들지 마세요.';
+        stage.innerHTML = `
+          <div class="text-center py-6">
+            <span class="text-5xl block mb-3">🤫</span>
+            <h3 class="text-2xl font-black text-white">모든 참가자는 조용히 스마트폰을 확인하세요</h3>
+            <p class="text-xs text-slate-400 mt-2">마피아는 스마트폰 화면에서 동료 명단을 확인하고 있습니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_DISCUSS') {
+        pTitle.textContent = `제 ${state.round}일 차 낮 - 자유 토론`;
+        pSub.textContent = '참가자들은 의심스러운 인물을 추리하고 자유롭게 토론을 진행해 주세요.';
+        stage.innerHTML = `
+          <div class="text-center py-6">
+            <span class="text-5xl block mb-2">🗣️</span>
+            <h3 class="text-2xl font-black text-white">의심스러운 인물을 찾아내세요!</h3>
+            <p class="text-xs text-slate-400 mt-1">토론 종료 후 스마트폰에서 즉시 지목 투표가 진행됩니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_NOMINATE') {
+        pTitle.textContent = '스마트폰으로 처형 후보를 지목해 주세요';
+        pSub.textContent = '실시간 지목 투표 집계 중입니다. 최다 득표자가 최후 변론석에 오릅니다.';
+
+        const votes = Object.entries(state.nominationVotes).map(([id, cnt]) => {
+          const pl = state.players.find(p => p.id === parseInt(id));
+          return { player: pl, count: cnt };
+        }).sort((a,b) => b.count - a.count);
+
+        stage.innerHTML = `
+          <div class="w-full max-w-xl mx-auto flex flex-col gap-2">
+            <span class="text-xs font-bold text-rose-400">실시간 상위 득표 현황:</span>
+            <div class="grid grid-cols-2 gap-3">
+              ${votes.slice(0, 4).map(v => `
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                  <span class="font-bold text-xs text-white">${v.player?.name}</span>
+                  <span class="font-black text-rose-500 font-mono text-sm">${v.count}표</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_TRIAL') {
+        pTitle.textContent = `최후 변론: ${state.trialCandidate?.name}`;
+        pSub.textContent = '지목된 후보자는 30초 동안 결백을 주장하세요. 곧 생사 투표가 열립니다.';
+        stage.innerHTML = `
+          <div class="text-center py-6 bg-slate-950 rounded-2xl border border-rose-900/40 p-4">
+            <span class="text-xs font-bold text-rose-400 block mb-1">피고인 변론석</span>
+            <h3 class="text-3xl font-black text-white">${state.trialCandidate?.name}</h3>
+          </div>
+        `;
+      } else if (state.phase === 'DAY_VERDICT') {
+        pTitle.textContent = `처형 찬반 투표 진행 중`;
+        pSub.textContent = '스마트폰에서 유죄 또는 무죄를 선택해 주세요.';
+        stage.innerHTML = `
+          <div class="grid grid-cols-2 gap-6 max-w-md mx-auto">
+            <div class="bg-rose-950/40 border border-rose-800 p-5 rounded-2xl text-center">
+              <span class="text-xs font-bold text-rose-400 block mb-1">유죄 (처형)</span>
+              <span class="text-4xl font-black text-rose-500 font-mono">${state.verdictVotes.guilty}표</span>
+            </div>
+            <div class="bg-sky-950/40 border border-sky-800 p-5 rounded-2xl text-center">
+              <span class="text-xs font-bold text-sky-400 block mb-1">무죄 (생존)</span>
+              <span class="text-4xl font-black text-sky-500 font-mono">${state.verdictVotes.innocent}표</span>
+            </div>
+          </div>
+        `;
+      } else if (state.phase === 'NIGHT') {
+        pTitle.textContent = `침묵의 밤 (40초 타임어택)`;
+        pSub.textContent = '참가자들은 스마트폰을 보며 침묵을 유지하세요. 마피아는 습격, 경찰은 조사, 의사는 치료를 진행합니다.';
+        stage.innerHTML = `
+          <div class="night-stars p-8 rounded-2xl text-center w-full">
+            <span class="text-5xl block mb-2">🌙</span>
+            <h3 class="text-xl font-black text-white">마피아와 특수 직업이 활동 중입니다</h3>
+            <p class="text-xs text-slate-400 mt-1">스마트폰으로 능력을 선택하면 서버가 자동으로 결과를 계산합니다.</p>
+          </div>
+        `;
+      } else if (state.phase === 'MORNING_REPORT') {
+        pTitle.textContent = '밤사이 사건 결과 발표';
+        const rep = state.lastNightReport;
+        stage.innerHTML = `
+          <div class="p-6 rounded-2xl border text-center w-full ${rep?.victim ? 'bg-rose-950/30 border-rose-800' : 'bg-emerald-950/30 border-emerald-800'}">
+            ${rep?.victim ? `
+              <span class="text-5xl block mb-2">🩸</span>
+              <h3 class="text-2xl font-black text-rose-400 mb-1">비극이 발생했습니다</h3>
+              <p class="text-base font-bold text-white">${rep.victim.name} 님이 마피아의 습격으로 사망하셨습니다.</p>
+            ` : `
+              <span class="text-5xl block mb-2">🕊️</span>
+              <h3 class="text-2xl font-black text-emerald-400 mb-1">평화로운 아침입니다!</h3>
+              <p class="text-base font-bold text-white">의사의 헌신적인 치료로 사망자가 발생하지 않았습니다.</p>
+            `}
+          </div>
+        `;
+      } else if (state.phase === 'GAME_OVER') {
+        pTitle.textContent = '게임 종료';
+        stage.innerHTML = `
+          <div class="text-center py-6">
+            <span class="text-6xl block mb-2">${state.winner === 'MAFIA' ? '👑' : '🎉'}</span>
+            <h3 class="text-3xl font-black ${state.winner === 'MAFIA' ? 'text-rose-500' : 'text-emerald-400'}">
+              ${state.winner === 'MAFIA' ? '마피아 진영의 승리!' : '시민 진영의 승리!'}
+            </h3>
+            <button id="postGameResetBtn" class="mt-4 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-slate-700 transition">
+              다음 라운드 준비 (참가자 유지)
+            </button>
+          </div>
+        `;
+        document.getElementById('postGameResetBtn').onclick = () => {
+          socket.emit('offline:reset_game');
+        };
+      }
+
+      // 로스터 렌더링
+      const grid = document.getElementById('rosterGrid');
+      const reveal = document.getElementById('revealCheck').checked;
+      const isLobby = state.phase === 'LOBBY';
+
+      grid.innerHTML = state.players.map(p => `
+        <div class="relative p-2.5 rounded-xl border ${p.isAlive ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/50 border-slate-900 opacity-40 grayscale'}">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-[10px] font-mono font-black w-5 h-5 rounded flex items-center justify-center ${p.isAlive ? 'bg-rose-900/50 text-rose-300' : 'bg-slate-800 text-slate-500'}">
+              👤
+            </span>
+            <div class="flex items-center gap-1">
+              <span class="text-[9px] font-bold ${p.isAlive ? 'text-emerald-400' : 'text-slate-500'}">
+                ${p.isAlive ? '생존' : '사망'}
+              </span>
+              ${isLobby ? `
+                <button onclick="kickPlayer(${p.id})" class="text-[9px] text-rose-500 hover:text-white bg-slate-800 hover:bg-rose-700 px-1 rounded transition" title="이 참가자 퇴장">
+                  ✕
+                </button>
+              ` : ''}
+            </div>
+          </div>
+          <div class="text-xs font-bold text-white truncate" title="${p.name}">${p.name}</div>
+          <div class="text-[10px] text-slate-500 truncate mt-0.5">
+            ${(reveal || !p.isAlive) && p.role ? p.role : '직업 비밀'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.kickPlayer = function(id) {
+      if (confirm('이 플레이어를 명단에서 제거하시겠습니까?')) {
+        socket.emit('offline:kick_player', { id });
+      }
+    };
+
+    document.getElementById('nextPhaseBtn').onclick = () => {
+      initAudio();
+      socket.emit('offline:next_phase');
+    };
+
+    document.getElementById('cleanupBtn').onclick = () => {
+      socket.emit('offline:cleanup_dead');
+    };
+
+    document.getElementById('roundResetBtn').onclick = () => {
+      socket.emit('offline:reset_game');
+    };
+
+    document.getElementById('kickAllBtn').onclick = () => {
+      if (confirm('모든 참가자를 방에서 퇴장시키고 완전히 초기화하시겠습니까?')) {
+        socket.emit('offline:kick_all');
+      }
+    };
+
+    document.getElementById('revealCheck').onchange = () => {
+      if (currentServerState) renderAll(currentServerState);
+    };
+
+    document.getElementById('audioToggleBtn').onclick = () => {
+      initAudio();
+      isSoundOn = !isSoundOn;
+      document.getElementById('audioToggleBtn').textContent = isSoundOn ? '🔊 사운드 ON' : '🔇 사운드 OFF';
+    };
+
+    document.getElementById('ttsToggleBtn').onclick = () => {
+      isTtsOn = !isTtsOn;
+      document.getElementById('ttsToggleBtn').textContent = isTtsOn ? '🗣️ 음성 안내 ON' : '🤫 음성 안내 OFF';
+    };
+  </script>
+</body>
+</html>
