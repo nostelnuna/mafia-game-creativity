@@ -331,7 +331,7 @@
         `;
 
         new QRCode(document.getElementById('qrcodeBox'), {
-          text: window.location.origin,
+          text: window.location.origin + '/offline',
           width: 130,
           height: 130
         });
