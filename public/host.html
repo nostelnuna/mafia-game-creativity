@@ -366,11 +366,16 @@
           </div>
         `;
       } else if (state.phase === 'DAY_NOMINATE') {
-        pTitle.textContent = '스마트폰으로 처형 후보를 지목해 주세요';
-        pSub.textContent = '실시간 지목 투표 집계 중입니다. 최다 득표자가 최후 변론석에 오릅니다.';
+        if (state.isReVote) {
+          pTitle.textContent = '⚠️ 동률 발생! 재투표 진행 중';
+          pSub.textContent = '동률을 기록한 후보자들만을 대상으로 재투표를 진행하고 있습니다.';
+        } else {
+          pTitle.textContent = '스마트폰으로 처형 후보를 지목해 주세요';
+          pSub.textContent = '실시간 지목 투표 집계 중입니다. 최다 득표자가 최후 변론석에 오릅니다.';
+        }
 
         const votes = Object.entries(state.nominationVotes).map(([id, cnt]) => {
-          const pl = state.players.find(p => p.id === parseInt(id));
+          const pl = state.players.find(p => p.id === id);
           return { player: pl, count: cnt };
         }).sort((a,b) => b.count - a.count);
 
@@ -435,6 +440,7 @@
               <h3 class="text-2xl font-black text-emerald-400 mb-1">평화로운 아침입니다!</h3>
               <p class="text-base font-bold text-white">의사의 헌신적인 치료로 사망자가 발생하지 않았습니다.</p>
             `}
+            <p class="text-xs text-slate-400 mt-3 animate-pulse">잠시 후 자동으로 다음 날 낮 토론이 시작됩니다...</p>
           </div>
         `;
       } else if (state.phase === 'GAME_OVER') {
@@ -470,16 +476,14 @@
               <span class="text-[9px] font-bold ${p.isAlive ? 'text-emerald-400' : 'text-slate-500'}">
                 ${p.isAlive ? '생존' : '사망'}
               </span>
-              ${isLobby ? `
-                <button onclick="kickPlayer(${p.id})" class="text-[9px] text-rose-500 hover:text-white bg-slate-800 hover:bg-rose-700 px-1 rounded transition" title="이 참가자 퇴장">
-                  ✕
-                </button>
-              ` : ''}
+              <button onclick="kickPlayer('${p.id}')" class="text-[9px] text-rose-500 hover:text-white bg-slate-800 hover:bg-rose-700 px-1.5 py-0.5 rounded transition font-bold" title="이 참가자 강퇴">
+                ✕
+              </button>
             </div>
           </div>
           <div class="text-xs font-bold text-white truncate" title="${p.name}">${p.name}</div>
           <div class="text-[10px] text-slate-500 truncate mt-0.5">
-            ${(reveal || !p.isAlive) && p.role ? p.role : '직업 비밀'}
+            ${(reveal && hostRolesMap[p.id]) || (state.phase === 'GAME_OVER' && p.role) ? (hostRolesMap[p.id] || p.role) : (p.isAlive ? '생존 (비공개)' : '사망 (비공개)')}
           </div>
         </div>
       `).join('');
@@ -510,8 +514,20 @@
       }
     };
 
-    document.getElementById('revealCheck').onchange = () => {
+    let hostRolesMap = {};
+
+    socket.on('offline:host_roles', (roles) => {
+      roles.forEach(r => { hostRolesMap[r.id] = r.role; });
       if (currentServerState) renderAll(currentServerState);
+    });
+
+    document.getElementById('revealCheck').onchange = () => {
+      const isChecked = document.getElementById('revealCheck').checked;
+      if (isChecked) {
+        socket.emit('offline:request_host_roles');
+      } else {
+        if (currentServerState) renderAll(currentServerState);
+      }
     };
 
     document.getElementById('audioToggleBtn').onclick = () => {

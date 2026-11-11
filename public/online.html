@@ -650,31 +650,28 @@
         badge.textContent = '찬반 투표';
         badge.className = 'text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white shadow';
         if (isAlive && !isMod) {
-          if (state.trialCandidate?.id === myPlayer?.id) {
-            actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">당신은 피고인입니다. 투표를 기다리세요.</div>`;
-          } else {
-            actionCard.innerHTML = `
-              <div class="flex flex-col gap-2">
-                <span class="text-xs font-bold text-center text-white">[${state.trialCandidate?.name}] 처형 찬반 투표</span>
-                <div class="grid grid-cols-2 gap-2">
-                  <button id="voteG" class="py-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow">
-                    유죄 (처형 찬성)
-                  </button>
-                  <button id="voteI" class="py-3 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow">
-                    무죄 (처형 반대)
-                  </button>
-                </div>
+          const isMeCandidate = state.trialCandidate?.id === myPlayer?.id;
+          actionCard.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-bold text-center text-white">[${state.trialCandidate?.name}] 처형 찬반 투표 ${isMeCandidate ? '<span class="text-rose-400">(피고인 본인 투표 가능)</span>' : ''}</span>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="voteG" class="py-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow">
+                  유죄 (처형 찬성)
+                </button>
+                <button id="voteI" class="py-3 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow">
+                  무죄 (처형 반대)
+                </button>
               </div>
-            `;
-            document.getElementById('voteG').onclick = () => {
-              socket.emit('online:verdict', { vote: 'guilty' });
-              actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">유죄 투표 제출 완료</div>`;
-            };
-            document.getElementById('voteI').onclick = () => {
-              socket.emit('online:verdict', { vote: 'innocent' });
-              actionCard.innerHTML = `<div class="text-center py-4 text-sky-400 font-bold text-xs">무죄 투표 제출 완료</div>`;
-            };
-          }
+            </div>
+          `;
+          document.getElementById('voteG').onclick = () => {
+            socket.emit('online:verdict', { vote: 'guilty' });
+            actionCard.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">유죄 투표 제출 완료</div>`;
+          };
+          document.getElementById('voteI').onclick = () => {
+            socket.emit('online:verdict', { vote: 'innocent' });
+            actionCard.innerHTML = `<div class="text-center py-4 text-sky-400 font-bold text-xs">무죄 투표 제출 완료</div>`;
+          };
         } else {
           actionCard.innerHTML = `<div class="text-center py-4 text-slate-400 text-xs">찬반 투표가 진행 중입니다...</div>`;
         }

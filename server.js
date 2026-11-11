@@ -72,6 +72,8 @@ const offlineState = {
   timerInterval: null,
   nominationVotes: {},
   trialCandidate: null,
+  tiedCandidateIds: null,
+  isReVote: false,
   verdictVotes: { guilty: 0, innocent: 0, votedSockets: new Set() },
   nightActions: { mafiaVotes: {}, doctorTarget: null, policeTarget: null },
   lastNightReport: null,
@@ -103,9 +105,11 @@ function broadcastOfflineState() {
       name: p.name,
       isAlive: p.isAlive,
       deathReason: p.deathReason,
-      role: !p.isAlive || offlineState.phase === 'GAME_OVER' ? p.role : null
+      role: offlineState.phase === 'GAME_OVER' ? p.role : null
     })),
     trialCandidate: offlineState.trialCandidate,
+    tiedCandidateIds: offlineState.tiedCandidateIds,
+    isReVote: offlineState.isReVote,
     nominationVotes: offlineState.nominationVotes,
     verdictVotes: { guilty: offlineState.verdictVotes.guilty, innocent: offlineState.verdictVotes.innocent },
     lastNightReport: offlineState.lastNightReport,
@@ -169,6 +173,8 @@ const onlineState = {
   isTimerPaused: false,
   nominationVotes: {},
   trialCandidate: null,
+  tiedCandidateIds: null,
+  isReVote: false,
   verdictVotes: { guilty: 0, innocent: 0, votedSockets: new Set() },
   nightActions: { mafiaVotes: {}, doctorTarget: null, policeTarget: null },
   lastNightReport: null,
@@ -229,7 +235,7 @@ function broadcastOnlineState() {
       isHost: p.isHost,
       isModerator: p.isModerator,
       deathReason: p.deathReason,
-      role: !p.isAlive || onlineState.phase === 'GAME_OVER' || p.isModerator ? p.role : null
+      role: onlineState.phase === 'GAME_OVER' || p.isModerator ? p.role : null
     })),
     trialCandidate: onlineState.trialCandidate,
     nominationVotes: onlineState.nominationVotes,
@@ -308,9 +314,32 @@ io.on('connection', (socket) => {
   // -------------------------------------------------------------
   // [1] 대면 오프라인 이벤트
   // -------------------------------------------------------------
+    // 호스트 전광판 전용 직업 실시간 토글 요청
+  socket.on('offline:request_host_roles', () => {
+    socket.emit('offline:host_roles', offlineState.players.map(p => ({ id: p.id, role: p.role })));
+  });
+
   socket.on('offline:init', () => {
     socket.join('room_offline');
     broadcastOfflineState();
+  });
+
+    socket.on('offline:request_role', () => {
+    const p = offlineState.players.find(pl => pl.socketId === socket.id);
+    if (!p || !p.role) return;
+    const roleObj = ROLES[p.role] || ROLES.CITIZEN;
+    let teammates = [];
+    if (roleObj.team === 'MAFIA') {
+      teammates = offlineState.players.filter(tm => tm.id !== p.id && ROLES[tm.role]?.team === 'MAFIA').map(tm => ({ name: tm.name }));
+    }
+    socket.emit('offline:secret_role', {
+      role: p.role,
+      roleName: roleObj.name,
+      team: roleObj.team,
+      icon: roleObj.icon,
+      desc: roleObj.desc,
+      teammates: teammates
+    });
   });
 
   socket.on('offline:player_join', ({ name, token }) => {
@@ -392,6 +421,8 @@ io.on('connection', (socket) => {
 
   function offlineDayDiscuss() {
     offlineState.phase = 'DAY_DISCUSS';
+    offlineState.tiedCandidateIds = null;
+    offlineState.isReVote = false;
     broadcastOfflineState();
     startOfflineTimer(120, () => offlineNominate());
   }
@@ -399,6 +430,7 @@ io.on('connection', (socket) => {
   function offlineNominate() {
     offlineState.phase = 'DAY_NOMINATE';
     offlineState.nominationVotes = {};
+    offlineState.nominationVoters = {};
     broadcastOfflineState();
     startOfflineTimer(30, () => resolveOfflineNominate());
   }
@@ -406,17 +438,49 @@ io.on('connection', (socket) => {
   socket.on('offline:nominate', ({ targetId }) => {
     const voter = offlineState.players.find(p => p.socketId === socket.id);
     if (!voter || !voter.isAlive || offlineState.phase !== 'DAY_NOMINATE') return;
-    offlineState.nominationVotes[targetId] = (offlineState.nominationVotes[targetId] || 0) + 1;
+    
+    // 유권자 1인당 1표만 인정 (중복 투표 방지)
+    if (!offlineState.nominationVoters) offlineState.nominationVoters = {};
+    offlineState.nominationVoters[voter.id] = targetId;
+
+    const tally = {};
+    Object.values(offlineState.nominationVoters).forEach(tid => {
+      tally[tid] = (tally[tid] || 0) + 1;
+    });
+    offlineState.nominationVotes = tally;
     broadcastOfflineState();
   });
 
   function resolveOfflineNominate() {
-    let topId = null, maxV = -1;
-    Object.entries(offlineState.nominationVotes).forEach(([id, cnt]) => {
-      if (cnt > maxV) { maxV = cnt; topId = id; }
-    });
     const alive = offlineState.players.filter(p => p.isAlive);
-    offlineState.trialCandidate = alive.find(p => p.id === topId) || alive[0];
+    const candidatePool = offlineState.tiedCandidateIds
+      ? alive.filter(p => offlineState.tiedCandidateIds.includes(p.id))
+      : alive;
+
+    let maxV = -1;
+    candidatePool.forEach(p => {
+      const cnt = offlineState.nominationVotes[p.id] || 0;
+      if (cnt > maxV) maxV = cnt;
+    });
+
+    let topCandidates = candidatePool.filter(p => (offlineState.nominationVotes[p.id] || 0) === maxV);
+
+    // 동률 발생 검사: 최다 득표자가 2명 이상이고 득표수가 1표 이상인 경우
+    if (topCandidates.length > 1 && maxV > 0) {
+      offlineState.tiedCandidateIds = topCandidates.map(c => c.id);
+      offlineState.nominationVotes = {};
+      offlineState.nominationVoters = {};
+      offlineState.isReVote = true;
+      offlineState.phase = 'DAY_NOMINATE';
+      broadcastOfflineState();
+      startOfflineTimer(25, () => resolveOfflineNominate());
+      return;
+    }
+
+    // 단독 1위 확정 시 최후 변론으로 이동
+    offlineState.trialCandidate = topCandidates.length === 1 ? topCandidates[0] : candidatePool[0];
+    offlineState.tiedCandidateIds = null;
+    offlineState.isReVote = false;
     offlineState.phase = 'DAY_TRIAL';
     broadcastOfflineState();
     startOfflineTimer(30, () => offlineVerdict());
@@ -514,6 +578,11 @@ io.on('connection', (socket) => {
         offlineState.winner = victory;
         broadcastOfflineState();
       }, 5000);
+    } else {
+      // 아침 사건 발표 후 7초 뒤 자동으로 다음 날 낮 토론으로 진행!
+      startOfflineTimer(7, () => {
+        offlineDayDiscuss();
+      });
     }
   }
 
@@ -535,6 +604,8 @@ io.on('connection', (socket) => {
     cleanupDeadOfflineSockets();
     offlineState.players.forEach(p => { p.role = null; p.isAlive = true; p.deathReason = null; });
     offlineState.trialCandidate = null;
+    offlineState.tiedCandidateIds = null;
+    offlineState.isReVote = false;
     offlineState.nominationVotes = {};
     offlineState.verdictVotes = { guilty: 0, innocent: 0, votedSockets: new Set() };
     offlineState.nightActions = { mafiaVotes: {}, doctorTarget: null, policeTarget: null };
@@ -797,6 +868,7 @@ io.on('connection', (socket) => {
   function onlineNominate() {
     onlineState.phase = 'DAY_NOMINATE';
     onlineState.nominationVotes = {};
+    onlineState.nominationVoters = {};
     broadcastOnlineState();
     broadcastOnlineSystemMsg(`🗳️ 토론이 종료되었습니다. 처형할 의심 인물을 지목하세요! (30초)`);
     startOnlineTimer(30, () => resolveOnlineNominate());
@@ -805,7 +877,16 @@ io.on('connection', (socket) => {
   socket.on('online:nominate', ({ targetId }) => {
     const voter = onlineState.players.find(p => p.socketId === socket.id);
     if (!voter || !voter.isAlive || voter.isModerator || onlineState.phase !== 'DAY_NOMINATE') return;
-    onlineState.nominationVotes[targetId] = (onlineState.nominationVotes[targetId] || 0) + 1;
+    
+    // 유권자 1인당 1표만 인정
+    if (!onlineState.nominationVoters) onlineState.nominationVoters = {};
+    onlineState.nominationVoters[voter.id] = targetId;
+
+    const tally = {};
+    Object.values(onlineState.nominationVoters).forEach(tid => {
+      tally[tid] = (tally[tid] || 0) + 1;
+    });
+    onlineState.nominationVotes = tally;
     broadcastOnlineState();
   });
 
